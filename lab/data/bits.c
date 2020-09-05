@@ -169,18 +169,40 @@ int tmin(void) {
     return 0x1 << 31;
 }
 //2
-/*
- * isTmax - returns 1 if x is the maximum, two's complement number,
- *     and 0 otherwise 
+/* 判断 x 是否补码最大值（TMax）
+ * TMax 的符号位为 0，其余位为 1。
+ *
+ * isTmax - returns 1 if x is the maximum, two's complement number, and 0 otherwise
  *   Legal ops: ! ~ & ^ | +
  *   Max ops: 10
  *   Rating: 1
  */
 int isTmax(int x) {
-    return 2;
+
+    // TMin, 1000
+    // 如果 x 是 TMax，+1 溢出则会变成 TMin
+    int i = x + 1;
+
+    // -1,1111
+    // 由于 TMin 的绝对值比 TMax 大 1，TMax + TMin == -1
+    x += i;
+
+    // 0,0000
+    // 逐位取反，-1 == (1111)2，~(1111)2 == (0000)2
+    x = ~x;
+
+    // exclude x = 0xffff
+    // 需要排除转换过程仲的其他值，比如 0xffff... 也满足上述这种处理
+    i = !i;
+    x += i;
+
+    // 最后对 x 做逻辑取反，只有当 x 为 000.。 时 !x 才为 1，否则为 0。
+    return !x;
 }
 
 /*
+ * 判断所有奇数位是否都为 1
+ *
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
  *   where bits are numbered from 0 (least significant) to 31 (most significant)
  *   Examples allOddBits(0xFFFFFFFD) = 0, allOddBits(0xAAAAAAAA) = 1
@@ -189,10 +211,53 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-    return 2;
+    // 0xAA == [00000000 00000000 00000000 10101010]
+
+    // 构造 32 位的、奇数位全为 1 的掩码：
+    // <<8  [00000000 00000000 00000000 10101010]
+    // ------------------------------------------
+    //      [00000000 00000000 10101010 00000000]
+    // +    [00000000 00000000 00000000 10101010]
+    // ------------------------------------------
+    // <<16 [00000000 00000000 10101010 10101010]
+    // ------------------------------------------
+    //      [10101010 10101010 00000000 00000000]
+    // +    [00000000 00000000 10101010 10101010]
+    // ------------------------------------------
+    //      [10101010 10101010 10101010 10101010]
+    int mask = 0xAA + (0xAA << 8);
+    mask = mask + (mask << 16);
+
+    // 利用掩码取 x 值的奇数位、其他位清零（过滤出相同的部分）；再与 mask 进行异或操作，相同则最终结果为 0，因此最后取一次逻辑非。
+
+    // 当 x 奇数位全为 1
+    // mask & x
+    //      [10101010 10101010 10101010 10101010]     mask
+    // &    [10101010 10101010 10101010 10101010]     x
+    // ------------------------------------------
+    //      [10101010 10101010 10101010 10101010]     mask & x
+    // ^    [10101010 10101010 10101010 10101010]     mask
+    // ------------------------------------------
+    //      [00000000 00000000 00000000 00000000]     (mask & x) ^ mask
+    // !((mask & x) ^ mask) == 1，判断为 T
+
+    // 当 x 奇数位不全为 1
+    // mask & x
+    //      [10101010 10101010 10101010 10101010]     mask
+    // &    [10101010 10101010 10101010 10000000]     x
+    // ------------------------------------------
+    //      [10101010 10101010 10101010 10000000]     mask & x
+    // ^    [10101010 10101010 10101010 10101010]     mask
+    // ------------------------------------------
+    //      [00000000 00000000 00000000 00101010]     (mask & x) ^ mask
+    // !((mask & x) ^ mask) == 0，判断为 F
+
+    return !((mask & x) ^ mask);
 }
 
 /*
+ * 不使用 - 操作符，求 -x 值
+ *
  * negate - return -x 
  *   Example: negate(1) = -1.
  *   Legal ops: ! ~ & ^ | + << >>
@@ -200,10 +265,19 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-    return 2;
+    // 补码是阿贝尔群，对于 x，-x 是其补码，所以 -x 可以通过对 x 取反 +1 得到。
+
+    // x            [0101]2 == [5]10
+    // ~x           [1010]2 == [-6]10
+    // ~x + 1       [1011]2 == [-5]10
+    // x == ~x + 1
+    return ~x + 1;
 }
 //3
-/* 
+/*
+ * 判断输入值是否数字 0 ~ 9 的 ASCII 值
+ * TODO
+ *
  * isAsciiDigit - return 1 if 0x30 <= x <= 0x39 (ASCII codes for characters '0' to '9')
  *   Example: isAsciiDigit(0x35) = 1.
  *            isAsciiDigit(0x3a) = 0.
@@ -213,10 +287,37 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-    return 2;
+    // 通过位级计算 x 是否在 0x30 ~ 0x39 范围内。
+
+    // <<31 [00000000 00000000 00000000 00000001]
+    // -----------------------------------------
+    //      [10000000 00000000 00000000 00000000]
+    int sign = 0x1 << 31;
+
+    //      [10000000 00000000 00000000 00000000]
+    // |    [00000000 00000000 00000000 00111001]
+    // ------------------------------------------
+    // ~    [10000000 00000000 00000000 00111001]
+    // ------------------------------------------
+    //      [11111111 11111111 11111111 11000110]
+    int upperBound = ~(sign | 0x39);
+
+    // ~    [00000000 00000000 00000000 00110000]
+    // ------------------------------------------
+    //      [11111111 11111111 11111111 11001111]
+    int lowerBound = ~0x30;
+
+    // 使用两个数，一个数是加上比 0x39 大的数后符号由正变负，另一个数是加上比 0x30 小的值时是负数。
+    upperBound = sign & (upperBound + x) >> 31;
+    lowerBound = sign & (lowerBound + 1 + x) >> 31;
+
+    // 只有这两个数都为负数才成立。
+    return !(upperBound | lowerBound);
 }
 
 /*
+ * 使用位级运算实现 x? y: z 三目运算符
+ *
  * conditional - same as x ? y : z 
  *   Example: conditional(2,4,5) = 4
  *   Legal ops: ! ~ & ^ | + << >>
@@ -224,10 +325,41 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-    return 2;
+    // x = !!x;
+
+    // 根据 x 的布尔值转换为全 0 或全 1，即 x == 0 时位表示是全 0，x != 0 时位表示是全 1。
+    // 通过获取其布尔值 0 或 1，然后求其补码（0 的补码是本身，位表示全 0；1 的补码是 -1，位表示全 1）得到想要的结果。
+    // 然后通过位运算获取最终值。
+
+    // 当 x == 3，y == 2，z == 1：
+
+    // 先对 x 取反。
+    // ~    [0011]
+    // -----------
+    //      [1100]
+    // +    [0001]
+    // -----------
+    //      [1101]
+    x = ~x + 1;
+
+    // 则 x & y：
+    //      [1101]
+    // &    [0010]
+    // -----------
+    //      [0000]
+
+    // ~x & z：
+    //      [0010]
+    // &    [0001]
+    // -----------
+    //      [0000]
+
+    return (x & y) | (~x & z);
 }
 
 /*
+ * 使用位级运算符实现 <=
+ *
  * isLessOrEqual - if x <= y  then return 1, else return 0 
  *   Example: isLessOrEqual(4,5) = 1.
  *   Legal ops: ! ~ & ^ | + << >>
@@ -235,10 +367,37 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-    return 2;
+    // -x
+    int negX = ~x + 1;
+
+    // y - x
+    int addX = negX + y;
+
+    // y - x 的符号
+    int checkSign = addX >> 31 & 1;
+
+    // 最大位为 1 的 32 位有符号数
+    int leftBit = 1 << 31;
+
+    // x 的符号
+    int xLeft = x & leftBit;
+
+    // y 的符号
+    int yLeft = y & leftBit;
+
+    // x 和 y 符号相同标志位，相同为 0 不同为 1
+    int bitXor = xLeft ^yLeft;
+
+    // 符号相同标志位格式化为 0 或 1
+    bitXor = (bitXor >> 31) & 1;
+
+    // 返回 1 有两种情况：符号相同标志位为 0（相同）位与 y - x 的符号为 0（y - x >= 0）结果为1；符号相同标志位为 1（不同）位与 x 的符号位为 1（x < 0）
+    return ((!bitXor) & (!checkSign)) | (bitXor & (xLeft >> 31));
 }
+
 //4
-/* 
+/* 使用位级运算求逻辑非 !
+ *
  * logicalNeg - implement the ! operator, using all of 
  *              the legal operators except !
  *   Examples: logicalNeg(3) = 0, logicalNeg(0) = 1
@@ -247,11 +406,13 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-    return 2;
+    // 逻辑非就是非 0 为 1，非非 0 为 0。
+    // 利用其补码（取反 + 1）的性质，除了 0 和最小数（符号位为 1，其余全为 0）外，其他数都是相反数关系（符号位取位或为 1）。
+    // 0 和最后数的补码是本身，0 的符号位与其补码符号位或为 0，最小数为 1。
+    return ((x | (~x + 1)) >> 31) + 1;
 }
 
-/* howManyBits - return the minimum number of bits required to represent x in
- *             two's complement
+/* howManyBits - return the minimum number of bits required to represent x in two's complement
  *  Examples: howManyBits(12) = 5
  *            howManyBits(298) = 10
  *            howManyBits(-5) = 4
@@ -263,7 +424,35 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-    return 0;
+    int b16, b8, b4, b2, b1, b0;
+    int sign = x >> 31;
+    // 如果 x 为正则不变，否则按位取反（这样好找最高位为 1 的，原来是最高位为 0 的，将符号位去掉
+    x = (sign & ~x) | (~sign & x);
+
+    // 不断缩小范围
+    // 高十六位是否有 1
+    b16 = !!(x >> 16) << 4;
+
+    //如果有（至少需要 16 位），则将原数右移 16 位
+    x = x >> b16;
+
+    // 剩余位高 8 位是否有 1
+    b8 = !!(x >> 8) << 3;
+
+    //如果有（至少需要 16 + 8 = 24 位），则右移 8 位
+    x = x >> b8;
+
+    // 同理
+    b4 = !!(x >> 4) << 2;
+    x = x >> b4;
+    b2 = !!(x >> 2) << 1;
+    x = x >> b2;
+    b1 = !!(x >> 1);
+    x = x >> b1;
+    b0 = x;
+
+    // +1 表示加上符号位
+    return b16 + b8 + b4 + b2 + b1 + b0 + 1;
 }
 //float
 /* 
